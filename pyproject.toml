@@ -8,10 +8,14 @@ version = "0.1.0"
 description = "Tensor Operations for Research in Quantum systems - Benchmarking."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["torch>=1.13, torq"]
+dependencies = [
+  "torch>=1.13",
+  "torq"
+]
 license = "MIT"
 
 [project.optional-dependencies]
+pennylane = ["pennylane"]
 dev = [
   "pytest",
   "ruff",
