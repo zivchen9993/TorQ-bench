@@ -1,112 +1,79 @@
-# QPINNACLE Quantum Library
+# TorQ-bench
 
-Lightweight, Torch-based statevector utilities built for fast quantum layers inside neural networks.
+Benchmarks and PennyLane comparisons for TorQ.
 
-## When to use
-
-- You want a fast, differentiable quantum layer inside a PyTorch model (`QLayer`/`Circuit`).
-- You train with large batches on GPU and care about throughput.
-- You need ideal (noise-free) analytic expectation values, not shot-based measurements. The noise and shots are features planned to be added in the future.
-
-## When not to use
-
-- You need realistic hardware noise models or error channels.
-- You need shot-based measurements or sampling.
-- You need hardware-specific circuit compilation.
-
-## What this library optimizes for
-
-- Speed as part of a neural network forward/backward pass.
-- Batched, parallel evaluation (many inputs at once).
-- Single-GPU execution for training pipelines.
-
-This library was optimized and benchmarked primarily on single NVIDIA L40s and A100 GPUs.
-Performance on other GPUs has not been tuned and may differ. Multi-GPU usage is not
-currently available.
-
-## Limitations
-
-- Statevector simulation only (memory scales as O(2^n)).
-- Analytic measurements only; no sampling/shots.
-- Ideal, noise-free gates and measurements.
+TorQ-bench is a small companion package that lets you run the same layer logic in
+TorQ and PennyLane to compare outputs and timing. It intentionally keeps PennyLane
+out of the core TorQ package.
 
 ## Install
 
+From source (recommended while developing):
+
 ```bash
-pip install -e .
+pip install -e .[pennylane]
 ```
 
-## Quickstart
+If published on PyPI:
+
+```bash
+pip install torq-bench[pennylane]
+```
+
+TorQ-bench depends on `torq>=0.1.0`. PennyLane is optional and only required for
+the comparison wrappers.
+
+## Quickstart: compare TorQ vs PennyLane
 
 ```python
 import torch
-from TorQ.simple import Circuit, CircuitConfig
+from torq.QLayer import QLayer
+from torq_bench import PennyLaneQLayer
 
 n_qubits = 4
 n_layers = 2
-
-cfg = CircuitConfig(data_reupload_every=0)
-circuit = Circuit(n_qubits=n_qubits, n_layers=n_layers, ansatz_name="strongly_entangling", config=cfg)
-
 x = torch.rand(8, n_qubits)
-y = circuit(x)
-```
 
-## Angle scaling example: (intended for usage with a tanh activation function before the quantum layer).
-
-```python
-import torch
-from TorQ.simple import Circuit, CircuitConfig
-
-cfg = CircuitConfig(angle_scaling=torch.pi, scale_with_bias=False)
-circuit = Circuit(n_qubits=4, n_layers=2, ansatz_name="strongly_entangling", config=cfg)
-
-x = torch.rand(8, 4)
-y = circuit(x)
-```
-
-## Data reuploading
-
-```python
-import torch
-from TorQ.simple import Circuit, CircuitConfig
-
-cfg = CircuitConfig(data_reupload_every=2)
-circuit = Circuit(n_qubits=4, n_layers=2, ansatz_name="cross_mesh", config=cfg)
-
-x = torch.rand(8, 4)
-y = circuit(x)
-```
-
-## Available ansatz names
-
-- strongly_entangling
-- strongly_entangling_all_to_all
-- cross_mesh
-- cross_mesh_2_rots
-- cross_mesh_cx_rot
-- no_entanglement_ansatz
-
-## Available scalings names (intended for usage with a tanh activation function before the quantum layer)
-
-- acos: acos(angles) -> output in [0, pi]
-- asin: asin(angles) + pi/2 -> output in [0, pi]
-- scale_with_bias(scale): (angles + 1) * (scale/2) -> output in [0, pi]  # usually scale is set to pi
-- scale(scale): angles * scale -> output in [-pi, pi]  # usually scale is set to pi
-- None: angles
-
-## Low-level functions
-
-```python
-from TorQ.simple import (
-    angle_embedding,
-    data_reuploading_gates,
-    data_reuploading,
-    get_initial_state,
-    measure,
+torq_layer = QLayer(n_qubits=n_qubits, n_layers=n_layers)
+pl_layer = PennyLaneQLayer(
+    n_qubits=n_qubits,
+    n_layers=n_layers,
+    pennylane_dev_name="default.qubit",
 )
+
+y_torq = torq_layer(x)
+y_pl = pl_layer(x)
+```
+
+Notes:
+- `PennyLaneQLayer` currently supports only `ansatz_name="strongly_entangling"`.
+- `data_reupload_every` is not supported in `PennyLaneQLayer`.
+
+## Using PennyLaneComparison directly
+
+```python
+import torch
+from torq_bench import PennyLaneComparison
+
+n_qubits = 4
+n_layers = 2
+weights = torch.rand(n_layers, n_qubits, 3)
+x = torch.rand(n_qubits)
+
+qc = PennyLaneComparison(n_qubits=n_qubits, n_layers=n_layers, weights=weights)
+circuit = qc.circuit_strongly_entangling()
+y = circuit(x)
+```
+
+## Run the built-in demo
+
+The comparison module includes a demo that builds and draws several circuits.
+It uses `qml.draw_mpl`, so you will need `matplotlib` installed.
+
+```bash
+python -m torq_bench.PennyLaneComparison
 ```
 
 ## License
 
-TBD
+MIT

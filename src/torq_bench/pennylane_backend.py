@@ -6,7 +6,7 @@ from torq.QLayer import QLayer
 from torq.Templates import get_angle_embedding_sigmas
 
 try:
-    from utility import PennyLaneSanityCheck as qml
+    from .PennyLaneComparison import PennyLaneComparison as qml
 except ImportError as exc:
     raise ImportError(
         "PennyLaneSanityCheck not found. This wrapper expects your original utility "

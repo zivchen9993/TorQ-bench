@@ -9,13 +9,12 @@ description = "Tensor Operations for Research in Quantum systems - Benchmarking.
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "torch>=1.13",
-  "torq"
+  "torq>=0.1.0",
 ]
 license = "MIT"
 
 [project.optional-dependencies]
-pennylane = ["pennylane"]
+pennylane = ["pennylane>=0.31"]
 dev = [
   "pytest",
   "ruff",
