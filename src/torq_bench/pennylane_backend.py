@@ -21,7 +21,7 @@ class PennyLaneQLayer(QLayer):
         self,
         n_qubits: int = 3,
         n_layers: int = 1,
-        ansatz_name: str = "strongly_entangling",
+        ansatz_name: str = "basic_entangling",
         config=None,
         weights=None,
         weights_last_layer_data_re=None,
@@ -44,8 +44,8 @@ class PennyLaneQLayer(QLayer):
 
         if getattr(self.config, "data_reupload_every", 0):
             raise ValueError("PennyLaneQLayer does not support data_reupload_every yet.")
-        if self.ansatz_name != "strongly_entangling":
-            raise ValueError("PennyLaneQLayer only supports ansatz_name='strongly_entangling'.")
+        if self.ansatz_name != "basic_entangling":
+            raise ValueError("PennyLaneQLayer only supports ansatz_name='basic_entangling'.")
 
         if pennylane_dev_name is None:
             pennylane_dev_name = getattr(self.config, "pennylane_dev_name", None)
@@ -56,7 +56,7 @@ class PennyLaneQLayer(QLayer):
             weights=self.params,
             pennylane_dev_name=pennylane_dev_name,
         )
-        self._qc = self._penny.circuit_strongly_entangling()
+        self._qc = self._penny.circuit_basic_entangling()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self._scale_angles(x)

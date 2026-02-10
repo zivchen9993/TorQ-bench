@@ -22,8 +22,8 @@ class qml_sanity_check:
         #### QIREN ####
         self.in_features = n_qubits  # to keep the naming
 
-    # 1) Strongly‑entangling (SX‑based mixer + wrap‑around ladder)
-    def circuit_strongly_entangling(self):
+    # 1) basic‑entangling (SX‑based mixer + wrap‑around ladder)
+    def circuit_basic_entangling(self):
         @qml.qnode(self.device)
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
@@ -35,8 +35,8 @@ class qml_sanity_check:
             return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
         return circuit
 
-    # 2) Strongly‑entangling all‑to‑all
-    def circuit_strongly_entangling_all_to_all(self):
+    # 2) Strongly‑entangling
+    def circuit_strongly_entangling(self):
         @qml.qnode(self.device)
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
@@ -111,8 +111,8 @@ class qml_sanity_check:
 
 
     #### data reuploading checks ####
-    # 1) Strongly‑entangling (SX‑based mixer + wrap‑around ladder)
-    def data_re_circuit_strongly_entangling(self):
+    # 1) basic‑entangling (SX‑based mixer + wrap‑around ladder)
+    def data_re_circuit_basic_entangling(self):
         @qml.qnode(self.device)
         def circuit(x):
             n, L, K = self.n_qubits, self.n_layers, self.data_reupload_every
@@ -129,8 +129,8 @@ class qml_sanity_check:
             return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
         return circuit
 
-    # 2) Strongly‑entangling all‑to‑all
-    def data_re_circuit_strongly_entangling_all_to_all(self):
+    # 2) Strongly‑entangling
+    def data_re_circuit_strongly_entangling(self):
         @qml.qnode(self.device)
         def circuit(x):
             n, L, K = self.n_qubits, self.n_layers, self.data_reupload_every
@@ -318,32 +318,32 @@ if __name__ == "__main__":
     data_reupload_every = 2
 
     ANSATZ_CONFIGS_DATA_RE = [
+        ("basic_entangling", lambda qc: qc.data_re_circuit_basic_entangling(), "data_re_circuit_basic_entangling"),
         ("strongly_entangling", lambda qc: qc.data_re_circuit_strongly_entangling(), "data_re_circuit_strongly_entangling"),
-        ("strongly_entangling_all_to_all", lambda qc: qc.data_re_circuit_strongly_entangling_all_to_all(), "data_re_circuit_strongly_entangling_all_to_all"),
         ("cross_mesh", lambda qc: qc.data_re_circuit_cross_mesh(), "data_re_circuit_cross_mesh"),
         ("cross_mesh_2_rots", lambda qc: qc.data_re_circuit_cross_mesh_2_rots(), "data_re_circuit_cross_mesh_2_rots"),
         ("cross_mesh_cx_rot", lambda qc: qc.data_re_circuit_cross_mesh_cx_rot(), "data_re_circuit_cross_mesh_cx_rot"),
-        ("strongly_entangling_all_to_all", lambda qc: qc.qinr_circuit(), "qinr_circuit"),
+        ("strongly_entangling", lambda qc: qc.qinr_circuit(), "qinr_circuit"),
     ]
     ANSATZ_CONFIGS = [
+        ("basic_entangling", lambda qc: qc.circuit_basic_entangling(), "circuit_basic_entangling - no data-re"),
         ("strongly_entangling", lambda qc: qc.circuit_strongly_entangling(), "circuit_strongly_entangling - no data-re"),
-        ("strongly_entangling_all_to_all", lambda qc: qc.circuit_strongly_entangling_all_to_all(), "circuit_strongly_entangling_all_to_all - no data-re"),
         ("cross_mesh", lambda qc: qc.circuit_cross_mesh(), "circuit_cross_mesh - no data-re"),
         ("cross_mesh_2_rots", lambda qc: qc.circuit_cross_mesh_2_rots(), "circuit_cross_mesh_2_rots - no data-re"),
         ("cross_mesh_cx_rot", lambda qc: qc.circuit_cross_mesh_cx_rot(), "circuit_cross_mesh_cx_rot - no data-re"),
     ]
 
     # with data-reupload
+    run_and_draw_circ("basic_entangling", lambda qc: qc.data_re_circuit_basic_entangling(), "data_re_circuit_basic_entangling", n_qubits, n_layers, data_reupload_every)
     run_and_draw_circ("strongly_entangling", lambda qc: qc.data_re_circuit_strongly_entangling(), "data_re_circuit_strongly_entangling", n_qubits, n_layers, data_reupload_every)
-    run_and_draw_circ("strongly_entangling_all_to_all", lambda qc: qc.data_re_circuit_strongly_entangling_all_to_all(), "data_re_circuit_strongly_entangling_all_to_all", n_qubits, n_layers, data_reupload_every)
     run_and_draw_circ("cross_mesh", lambda qc: qc.data_re_circuit_cross_mesh(), "data_re_circuit_cross_mesh", n_qubits, n_layers, data_reupload_every)
     run_and_draw_circ("cross_mesh_2_rots", lambda qc: qc.data_re_circuit_cross_mesh_2_rots(), "data_re_circuit_cross_mesh_2_rots", n_qubits, n_layers, data_reupload_every)
     run_and_draw_circ("cross_mesh_cx_rot", lambda qc: qc.data_re_circuit_cross_mesh_cx_rot(), "data_re_circuit_cross_mesh_cx_rot", n_qubits, n_layers, data_reupload_every)
-    run_and_draw_circ("strongly_entangling_all_to_all", lambda qc: qc.qinr_circuit(), "qinr_circuit", n_qubits, n_layers, data_reupload_every)
+    run_and_draw_circ("strongly_entangling", lambda qc: qc.qinr_circuit(), "qinr_circuit", n_qubits, n_layers, data_reupload_every)
 
     # without data-reupload
+    run_and_draw_circ("basic_entangling", lambda qc: qc.circuit_basic_entangling(), "circuit_basic_entangling - no data-re", n_qubits, n_layers)
     run_and_draw_circ("strongly_entangling", lambda qc: qc.circuit_strongly_entangling(), "circuit_strongly_entangling - no data-re", n_qubits, n_layers)
-    run_and_draw_circ("strongly_entangling_all_to_all", lambda qc: qc.circuit_strongly_entangling_all_to_all(), "circuit_strongly_entangling_all_to_all - no data-re", n_qubits, n_layers)
     run_and_draw_circ("cross_mesh", lambda qc: qc.circuit_cross_mesh(), "circuit_cross_mesh - no data-re", n_qubits, n_layers)
     run_and_draw_circ("cross_mesh_2_rots", lambda qc: qc.circuit_cross_mesh_2_rots(), "circuit_cross_mesh_2_rots - no data-re", n_qubits, n_layers)
     run_and_draw_circ("cross_mesh_cx_rot", lambda qc: qc.circuit_cross_mesh_cx_rot(), "circuit_cross_mesh_cx_rot - no data-re", n_qubits, n_layers)
