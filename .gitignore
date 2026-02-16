@@ -31,7 +31,6 @@ runs_from_A100/
 runs_bp/
 figures_for_paper/
 older runs/
-git_token.txt
 Ez_pade*
 some_name_other.py
 lid_driven_cavity.ipynb
