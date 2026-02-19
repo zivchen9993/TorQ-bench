@@ -6,11 +6,10 @@ from torq.QLayer import QLayer
 from torq.Templates import get_angle_embedding_sigmas
 
 try:
-    from .PennyLaneComparison import PennyLaneComparison as qml
+    from .PennyLaneComparison import PennyLaneComparison
 except ImportError as exc:
     raise ImportError(
-        "PennyLaneSanityCheck not found. This wrapper expects your original utility "
-        "module to be importable in the current environment."
+        "PennyLaneComparison not found. Install with `pip install torq-bench[pennylane]`."
     ) from exc
 
 
@@ -48,9 +47,10 @@ class PennyLaneQLayer(QLayer):
             raise ValueError("PennyLaneQLayer only supports ansatz_name='basic_entangling'.")
 
         if pennylane_dev_name is None:
-            pennylane_dev_name = getattr(self.config, "pennylane_dev_name", None)
+            pennylane_dev_name = getattr(self.config, "pennylane_dev_name", "default.qubit")
+        pennylane_dev_name = pennylane_dev_name or "default.qubit"
 
-        self._penny = qml.qml_sanity_check(
+        self._penny = PennyLaneComparison(
             n_qubits=self.n_qubits,
             n_layers=self.n_layers,
             weights=self.params,

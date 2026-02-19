@@ -2,10 +2,11 @@ try:
     import pennylane as qml
 except ImportError as exc:
     raise ImportError("Install with `pip install torq-bench[pennylane]`") from exc
+import sys
 import torch
 import numpy as np
 
-class qml_sanity_check:
+class PennyLaneComparison:
     def __init__(self, n_qubits=3, n_layers=1, weights=None, weights_last_layer_data_re=None,
                  data_reupload_every=0, pennylane_dev_name="default.qubit"):
         self.device    = qml.device(pennylane_dev_name, wires=n_qubits)
@@ -17,20 +18,24 @@ class qml_sanity_check:
         self.params    = weights
         self.params_last_layer_reupload = weights_last_layer_data_re
         self.data_reupload_every = data_reupload_every
-        print(f"[qml_sanity_check] Initialized with {n_qubits} qubits and {n_layers} layers.")
+        # Keep this helper side-effect free for library usage.
 
-        #### QIREN ####
-        self.in_features = n_qubits  # to keep the naming
+    def _params_no_data_reupload(self):
+        params = self.params
+        if params is not None and params.ndim >= 2 and params.shape[1] == 1:
+            params = params[:, 0]
+        return params
 
     # 1) basic‑entangling (SX‑based mixer + wrap‑around ladder)
     def circuit_basic_entangling(self):
         @qml.qnode(self.device)
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
+            params = self._params_no_data_reupload()
             qml.AngleEmbedding(x, wires=range(n))
 
             ranges = L * [1]
-            qml.StronglyEntanglingLayers(self.params.squeeze(), range(n), ranges=ranges)
+            qml.StronglyEntanglingLayers(params, range(n), ranges=ranges)
 
             return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
         return circuit
@@ -40,9 +45,10 @@ class qml_sanity_check:
         @qml.qnode(self.device)
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
+            params = self._params_no_data_reupload()
             qml.AngleEmbedding(x, wires=range(n))
 
-            qml.StronglyEntanglingLayers(self.params.squeeze(), range(n))
+            qml.StronglyEntanglingLayers(params, range(n))
 
             return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
         return circuit
@@ -52,11 +58,12 @@ class qml_sanity_check:
         @qml.qnode(self.device)
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
+            params = self._params_no_data_reupload()
             qml.AngleEmbedding(x, wires=range(n))
             pairs = [(c, t) for c in reversed(range(n)) for t in reversed(range(n)) if c != t]
 
             for layer in range(L):
-                w = self.params[layer].flatten()   # shape [n**2]
+                w = params[layer].flatten()   # shape [n**2]
                 # 1) single RX
                 for q in range(n):
                     qml.RX(w[q], wires=q)
@@ -72,10 +79,11 @@ class qml_sanity_check:
         @qml.qnode(self.device)
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
+            params = self._params_no_data_reupload()
             qml.AngleEmbedding(x, wires=range(n))
             pairs = [(c, t) for c in reversed(range(n)) for t in reversed(range(n)) if c != t]
             for layer in range(L):
-                w = self.params[layer].flatten()   # shape [2*n + n*(n-1)]
+                w = params[layer].flatten()   # shape [2*n + n*(n-1)]
                 theta1 = w[:n]
                 theta2 = w[n:2*n]
                 # first RX then RZ per qubit
@@ -94,11 +102,12 @@ class qml_sanity_check:
         @qml.qnode(self.device)
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
+            params = self._params_no_data_reupload()
             qml.AngleEmbedding(x, wires=range(n))
             pairs = [(c, t) for c in reversed(range(n)) for t in reversed(range(n)) if c != t]
 
             for layer in range(L):
-                w = self.params[layer]  # shape [n,3]
+                w = params[layer]  # shape [n,3]
                 # 1) composite Rot on each qubit
                 for q in range(n):
                     qml.Rot(w[q,0], w[q,1], w[q,2], wires=q)
@@ -276,10 +285,14 @@ def run_and_draw_circ(ansatz, circuit_factory, title, n_qubits=5, n_layers=3, da
         x, weights, weights_last_layer_data_re = get_input_and_weights(ansatz, n_qubits, n_layers)
     else:
         x, weights, weights_last_layer_data_re = get_input_and_weights_data_re(ansatz, n_qubits, n_layers, data_reupload_every)
-    qml_sanity_check_class = qml_sanity_check(n_qubits=n_qubits, n_layers=n_layers,
-                                              weights=weights, weights_last_layer_data_re=weights_last_layer_data_re,
-                                              data_reupload_every=data_reupload_every)
-    circuit = circuit_factory(qml_sanity_check_class)
+    comparison = PennyLaneComparison(
+        n_qubits=n_qubits,
+        n_layers=n_layers,
+        weights=weights,
+        weights_last_layer_data_re=weights_last_layer_data_re,
+        data_reupload_every=data_reupload_every,
+    )
+    circuit = circuit_factory(comparison)
     # print("title: ", qml.draw(circuit)(x))
     fig, ax = qml.draw_mpl(circuit, level="device")(x)
     fig.suptitle(title, fontsize="xx-large")
@@ -310,6 +323,13 @@ def get_input_and_weights_data_re(ansatz, n_qubits=5, n_layers=3, data_reupload_
 
     x = torch.rand(n_qubits)
     return x, weights, weights_last_layer_data_re
+
+
+# Backward compatibility for TorQ and older integrations.
+qml_sanity_check = PennyLaneComparison
+parent_module = sys.modules.get(__package__)
+if parent_module is not None:
+    setattr(parent_module, "PennyLaneComparison", PennyLaneComparison)
 
 if __name__ == "__main__":
     torch.manual_seed(0)

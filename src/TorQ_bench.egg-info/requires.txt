@@ -1,9 +1,0 @@
-torq>=0.1.0
-
-[dev]
-pytest
-ruff
-mypy
-
-[pennylane]
-pennylane>=0.31

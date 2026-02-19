@@ -1,4 +1,3 @@
-# torq/__init__.py
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
 try:
@@ -8,11 +7,14 @@ except PackageNotFoundError:
 
 __all__ = ["PennyLaneQLayer", "PennyLaneComparison"]
 
+
 def __getattr__(name):
     if name == "PennyLaneQLayer":
         from .pennylane_backend import PennyLaneQLayer
+        globals()[name] = PennyLaneQLayer
         return PennyLaneQLayer
     if name == "PennyLaneComparison":
         from .PennyLaneComparison import PennyLaneComparison
+        globals()[name] = PennyLaneComparison
         return PennyLaneComparison
     raise AttributeError(f"module {__name__} has no attribute {name}")

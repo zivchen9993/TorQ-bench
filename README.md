@@ -20,7 +20,7 @@ If published on PyPI:
 pip install torq-bench[pennylane]
 ```
 
-TorQ-bench depends on `torq>=0.1.0`. PennyLane is optional and only required for
+TorQ-bench depends on `torq>=0.1.1`. PennyLane is optional and only required for
 the comparison wrappers.
 
 ## Quickstart: compare TorQ vs PennyLane
@@ -46,7 +46,7 @@ y_pl = pl_layer(x)
 ```
 
 Notes:
-- `PennyLaneQLayer` currently supports only `ansatz_name="strongly_entangling"`.
+- `PennyLaneQLayer` currently supports only `ansatz_name="basic_entangling"`.
 - `data_reupload_every` is not supported in `PennyLaneQLayer`.
 
 ## Using PennyLaneComparison directly

@@ -17,6 +17,9 @@ classical_comparisson/
 .venv/
 .idea/
 .git/
+*.egg-info/
+build/
+dist/
 
 #=======
 
