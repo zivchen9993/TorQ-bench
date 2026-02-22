@@ -167,7 +167,7 @@ def test_build_smoke_produces_wheel_and_sdist(tmp_path: Path):
     with zipfile.ZipFile(wheel_path) as zf:
         metadata_file = next(name for name in zf.namelist() if name.endswith("METADATA"))
         metadata = zf.read(metadata_file).decode("utf-8")
-    assert "Requires-Dist: torq>=0.1.1" in metadata
+    assert "Requires-Dist: torq-quantum>=0.1.2" in metadata
 
 
 def test_built_wheel_installs_in_clean_venv(tmp_path: Path):
