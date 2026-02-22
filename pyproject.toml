@@ -9,7 +9,7 @@ description = "Tensor Operations for Research in Quantum systems - Benchmarking.
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "torq>=0.1.1",
+  "torq-quantum>=0.1.2",
 ]
 license = { text = "MIT" }
 
