@@ -48,8 +48,10 @@ y_pl = pl_layer(x)
 ```
 
 Notes:
-- `PennyLaneQLayer` currently supports only `ansatz_name="basic_entangling"`.
-- `data_reupload_every` is not supported in `PennyLaneQLayer`.
+- `PennyLaneQLayer` supports TorQ ansatz names:
+  `basic_entangling`, `strongly_entangling`, `cross_mesh`, `cross_mesh_2_rots`,
+  `cross_mesh_cx_rot`, and `no_entanglement_ansatz`.
+- `data_reupload_every` is supported.
 
 ## Using PennyLaneComparison directly
 

@@ -13,6 +13,38 @@ except ImportError as exc:
     ) from exc
 
 
+def _select_circuit(pennylane_backend, ansatz_name: str, data_reupload_every: int):
+    if data_reupload_every:
+        candidates = {
+            "basic_entangling": ("data_re_circuit_basic_entangling",),
+            "strongly_entangling": ("data_re_circuit_strongly_entangling",),
+            "cross_mesh": ("data_re_circuit_cross_mesh",),
+            "cross_mesh_2_rots": ("data_re_circuit_cross_mesh_2_rots",),
+            "cross_mesh_cx_rot": ("data_re_circuit_cross_mesh_cx_rot",),
+            "no_entanglement_ansatz": (
+                "data_re_circuit_no_entanglement_ansatz",
+                "data_re_circuit_no_entanglement",
+            ),
+        }
+    else:
+        candidates = {
+            "basic_entangling": ("circuit_basic_entangling",),
+            "strongly_entangling": ("circuit_strongly_entangling",),
+            "cross_mesh": ("circuit_cross_mesh",),
+            "cross_mesh_2_rots": ("circuit_cross_mesh_2_rots",),
+            "cross_mesh_cx_rot": ("circuit_cross_mesh_cx_rot",),
+            "no_entanglement_ansatz": (
+                "circuit_no_entanglement_ansatz",
+                "circuit_no_entanglement",
+            ),
+        }
+
+    for method_name in candidates.get(ansatz_name, ()):
+        if hasattr(pennylane_backend, method_name):
+            return getattr(pennylane_backend, method_name)()
+    return None
+
+
 class PennyLaneQLayer(QLayer):
     """QLayer wrapper that runs the PennyLane sanity circuit for timing comparisons."""
 
@@ -41,11 +73,6 @@ class PennyLaneQLayer(QLayer):
             basis_angle_embedding=basis_angle_embedding,
         )
 
-        if getattr(self.config, "data_reupload_every", 0):
-            raise ValueError("PennyLaneQLayer does not support data_reupload_every yet.")
-        if self.ansatz_name != "basic_entangling":
-            raise ValueError("PennyLaneQLayer only supports ansatz_name='basic_entangling'.")
-
         if pennylane_dev_name is None:
             pennylane_dev_name = getattr(self.config, "pennylane_dev_name", "default.qubit")
         pennylane_dev_name = pennylane_dev_name or "default.qubit"
@@ -54,9 +81,21 @@ class PennyLaneQLayer(QLayer):
             n_qubits=self.n_qubits,
             n_layers=self.n_layers,
             weights=self.params,
+            weights_last_layer_data_re=getattr(self, "params_last_layer_reupload", None),
+            data_reupload_every=self.data_reupload_every,
+            basis_angle_embedding=self.basis_angle_embedding,
             pennylane_dev_name=pennylane_dev_name,
         )
-        self._qc = self._penny.circuit_basic_entangling()
+        self._qc = _select_circuit(
+            self._penny,
+            ansatz_name=self.ansatz_name,
+            data_reupload_every=self.data_reupload_every,
+        )
+        if self._qc is None:
+            raise ValueError(
+                f"PennyLaneQLayer does not support ansatz_name={self.ansatz_name!r} "
+                f"with data_reupload_every={self.data_reupload_every}."
+            )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self._scale_angles(x)

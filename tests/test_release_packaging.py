@@ -82,30 +82,62 @@ def _python_in_venv(venv_dir: Path) -> Path:
     return venv_dir / "bin" / "python"
 
 
-def test_pennylane_q_layer_rejects_unsupported_ansatz():
+def test_pennylane_q_layer_supports_torq_ansatzes_without_data_reupload():
     pytest.importorskip("pennylane")
     pytest.importorskip("torq")
 
+    import torch
     from torq_bench.pennylane_backend import PennyLaneQLayer
 
-    with pytest.raises(ValueError, match="basic_entangling"):
-        PennyLaneQLayer(n_qubits=2, n_layers=1, ansatz_name="strongly_entangling")
+    ansatz_names = (
+        "basic_entangling",
+        "strongly_entangling",
+        "cross_mesh",
+        "cross_mesh_2_rots",
+        "cross_mesh_cx_rot",
+        "no_entanglement_ansatz",
+    )
+    x = torch.rand(3, 2)
+    for ansatz_name in ansatz_names:
+        layer = PennyLaneQLayer(
+            n_qubits=2,
+            n_layers=1,
+            ansatz_name=ansatz_name,
+            basis_angle_embedding="Y",
+        )
+        out = layer(x)
+        assert out.shape == (3, 2)
+        assert torch.isfinite(out).all()
 
 
-def test_pennylane_q_layer_rejects_data_reupload():
+def test_pennylane_q_layer_supports_data_reupload():
     pytest.importorskip("pennylane")
     pytest.importorskip("torq")
 
+    import torch
     from torq.simple import CircuitConfig
     from torq_bench.pennylane_backend import PennyLaneQLayer
 
-    with pytest.raises(ValueError, match="data_reupload_every"):
-        PennyLaneQLayer(
-            n_qubits=2,
-            n_layers=1,
-            ansatz_name="basic_entangling",
-            config=CircuitConfig(data_reupload_every=1),
-        )
+    layer = PennyLaneQLayer(
+        n_qubits=2,
+        n_layers=2,
+        ansatz_name="no_entanglement_ansatz",
+        config=CircuitConfig(data_reupload_every=2),
+        basis_angle_embedding="Z",
+    )
+    out = layer(torch.rand(4, 2))
+    assert out.shape == (4, 2)
+    assert torch.isfinite(out).all()
+
+
+def test_pennylane_q_layer_rejects_unknown_ansatz():
+    pytest.importorskip("pennylane")
+    pytest.importorskip("torq")
+
+    from torq_bench.pennylane_backend import PennyLaneQLayer
+
+    with pytest.raises(ValueError, match="Unknown ansatz|does not support ansatz_name"):
+        PennyLaneQLayer(n_qubits=2, n_layers=1, ansatz_name="not_a_real_ansatz")
 
 
 def test_missing_pennylane_reports_install_hint(tmp_path: Path):

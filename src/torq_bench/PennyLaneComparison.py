@@ -6,18 +6,42 @@ import sys
 import torch
 import numpy as np
 
+_ANGLE_EMBEDDING_ROTATIONS = {
+    "x": "X",
+    "rx": "X",
+    "y": "Y",
+    "ry": "Y",
+    "z": "Z",
+    "rz": "Z",
+}
+
+
 class PennyLaneComparison:
-    def __init__(self, n_qubits=3, n_layers=1, weights=None, weights_last_layer_data_re=None,
-                 data_reupload_every=0, pennylane_dev_name="default.qubit"):
-        self.device    = qml.device(pennylane_dev_name, wires=n_qubits)
+    def __init__(
+        self,
+        n_qubits=3,
+        n_layers=1,
+        weights=None,
+        weights_last_layer_data_re=None,
+        data_reupload_every=0,
+        pennylane_dev_name="default.qubit",
+        basis_angle_embedding="X",
+    ):
+        self.device = qml.device(pennylane_dev_name, wires=n_qubits)
         # self.device    = qml.device("lightning.qubit", wires=n_qubits)
         # self.device    = qml.device("lightning.gpu", wires=n_qubits)
         # self.device    = qml.device("lightning.kokkos", wires=n_qubits)
-        self.n_qubits  = n_qubits
-        self.n_layers  = n_layers
-        self.params    = weights
+        self.n_qubits = n_qubits
+        self.n_layers = n_layers
+        self.params = weights
         self.params_last_layer_reupload = weights_last_layer_data_re
         self.data_reupload_every = data_reupload_every
+        basis_key = (basis_angle_embedding or "X").lower()
+        if basis_key not in _ANGLE_EMBEDDING_ROTATIONS:
+            raise ValueError(
+                "basis_angle_embedding must be one of X/RX, Y/RY, Z/RZ for PennyLaneComparison."
+            )
+        self._angle_embedding_rotation = _ANGLE_EMBEDDING_ROTATIONS[basis_key]
         # Keep this helper side-effect free for library usage.
 
     def _params_no_data_reupload(self):
@@ -26,13 +50,20 @@ class PennyLaneComparison:
             params = params[:, 0]
         return params
 
+    def _angle_embed(self, x):
+        qml.AngleEmbedding(
+            x,
+            wires=range(self.n_qubits),
+            rotation=self._angle_embedding_rotation,
+        )
+
     # 1) basic‑entangling (SX‑based mixer + wrap‑around ladder)
     def circuit_basic_entangling(self):
         @qml.qnode(self.device)
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
             params = self._params_no_data_reupload()
-            qml.AngleEmbedding(x, wires=range(n))
+            self._angle_embed(x)
 
             ranges = L * [1]
             qml.StronglyEntanglingLayers(params, range(n), ranges=ranges)
@@ -46,7 +77,7 @@ class PennyLaneComparison:
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
             params = self._params_no_data_reupload()
-            qml.AngleEmbedding(x, wires=range(n))
+            self._angle_embed(x)
 
             qml.StronglyEntanglingLayers(params, range(n))
 
@@ -59,7 +90,7 @@ class PennyLaneComparison:
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
             params = self._params_no_data_reupload()
-            qml.AngleEmbedding(x, wires=range(n))
+            self._angle_embed(x)
             pairs = [(c, t) for c in reversed(range(n)) for t in reversed(range(n)) if c != t]
 
             for layer in range(L):
@@ -80,7 +111,7 @@ class PennyLaneComparison:
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
             params = self._params_no_data_reupload()
-            qml.AngleEmbedding(x, wires=range(n))
+            self._angle_embed(x)
             pairs = [(c, t) for c in reversed(range(n)) for t in reversed(range(n)) if c != t]
             for layer in range(L):
                 w = params[layer].flatten()   # shape [2*n + n*(n-1)]
@@ -103,7 +134,7 @@ class PennyLaneComparison:
         def circuit(x):
             n, L = self.n_qubits, self.n_layers
             params = self._params_no_data_reupload()
-            qml.AngleEmbedding(x, wires=range(n))
+            self._angle_embed(x)
             pairs = [(c, t) for c in reversed(range(n)) for t in reversed(range(n)) if c != t]
 
             for layer in range(L):
@@ -118,6 +149,27 @@ class PennyLaneComparison:
             return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
         return circuit
 
+    # 6) No-entanglement ansatz (per-qubit Rot gates only)
+    def circuit_no_entanglement_ansatz(self):
+        @qml.qnode(self.device)
+        def circuit(x):
+            n, L = self.n_qubits, self.n_layers
+            params = self._params_no_data_reupload()
+            self._angle_embed(x)
+
+            for layer in range(L):
+                w = params[layer]
+                for q in range(n):
+                    qml.Rot(w[q, 0], w[q, 1], w[q, 2], wires=q)
+
+            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+
+        return circuit
+
+    # Alias kept for forward compatibility with potential torq selectors.
+    def circuit_no_entanglement(self):
+        return self.circuit_no_entanglement_ansatz()
+
 
     #### data reuploading checks ####
     # 1) basic‑entangling (SX‑based mixer + wrap‑around ladder)
@@ -130,7 +182,7 @@ class PennyLaneComparison:
             for layer in range(L):
                 w = self.params[layer]      # shape [n,3]
                 qml.StronglyEntanglingLayers(w.unsqueeze(0), wires=range(n), ranges=ranges)
-                qml.AngleEmbedding(x, wires=range(n))
+                self._angle_embed(x)
 
             # last layer
             qml.StronglyEntanglingLayers(self.params_last_layer_reupload.unsqueeze(0), wires=range(n), ranges=ranges)
@@ -147,7 +199,7 @@ class PennyLaneComparison:
             for layer in range(L):
                 w = self.params[layer]      # shape [n,3]
                 qml.StronglyEntanglingLayers(w.unsqueeze(0), wires=range(n))
-                qml.AngleEmbedding(x, wires=range(n))
+                self._angle_embed(x)
 
             # last layer
             qml.StronglyEntanglingLayers(self.params_last_layer_reupload.unsqueeze(0), wires=range(n))
@@ -171,7 +223,7 @@ class PennyLaneComparison:
                     # 2) cross‑mesh CRZs
                     for idx,(c,t) in enumerate(pairs):
                         qml.CRZ(w[n + idx], wires=[c, t])
-                qml.AngleEmbedding(x, wires=range(n))
+                self._angle_embed(x)
 
             # last layer
             for k in range(K):
@@ -205,7 +257,7 @@ class PennyLaneComparison:
                     # cross‑mesh CRZ
                     for idx,(c,t) in enumerate(pairs):
                         qml.CRZ(w[2*n + idx], wires=[c, t])
-                qml.AngleEmbedding(x, wires=range(n))
+                self._angle_embed(x)
 
             # last layer
             for k in range(K):
@@ -239,7 +291,7 @@ class PennyLaneComparison:
                     pairs = [(c,t) for c in reversed(range(n)) for t in reversed(range(n)) if c!=t]
                     for c,t in pairs:
                         qml.CNOT(wires=[c, t])
-                qml.AngleEmbedding(x, wires=range(n))
+                self._angle_embed(x)
 
             # last layer
             for k in range(K):
@@ -254,6 +306,32 @@ class PennyLaneComparison:
 
             return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
         return circuit
+
+    # 6) No-entanglement ansatz (per-qubit Rot gates only)
+    def data_re_circuit_no_entanglement_ansatz(self):
+        @qml.qnode(self.device)
+        def circuit(x):
+            n, L, K = self.n_qubits, self.n_layers, self.data_reupload_every
+
+            for layer in range(L):
+                for k in range(K):
+                    w = self.params[layer, k]
+                    for q in range(n):
+                        qml.Rot(w[q, 0], w[q, 1], w[q, 2], wires=q)
+                self._angle_embed(x)
+
+            for k in range(K):
+                w = self.params_last_layer_reupload[k]
+                for q in range(n):
+                    qml.Rot(w[q, 0], w[q, 1], w[q, 2], wires=q)
+
+            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+
+        return circuit
+
+    # Alias kept for forward compatibility with potential torq selectors.
+    def data_re_circuit_no_entanglement(self):
+        return self.data_re_circuit_no_entanglement_ansatz()
 
     def qinr_circuit(self):
         weights1 = self.params
