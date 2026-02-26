@@ -52,6 +52,8 @@ Notes:
   `basic_entangling`, `strongly_entangling`, `cross_mesh`, `cross_mesh_2_rots`,
   `cross_mesh_cx_rot`, and `no_entanglement_ansatz`.
 - `data_reupload_every` is supported.
+- Output observables support `local_observable_name` (including `X`, `Y`, `custom`)
+  and `measurement_observables` specs (including non-local terms).
 
 ## Using PennyLaneComparison directly
 

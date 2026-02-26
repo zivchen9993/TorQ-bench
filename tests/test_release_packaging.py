@@ -130,6 +130,90 @@ def test_pennylane_q_layer_supports_data_reupload():
     assert torch.isfinite(out).all()
 
 
+def test_pennylane_q_layer_matches_torq_for_custom_local_observable():
+    pytest.importorskip("pennylane")
+    pytest.importorskip("torq")
+
+    import torch
+    from torq.QLayer import QLayer
+    from torq.simple import CircuitConfig
+    from torq_bench.pennylane_backend import PennyLaneQLayer
+
+    torch.manual_seed(0)
+    custom_obs = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.float32)
+    config = CircuitConfig(
+        local_observable_name="custom",
+        custom_local_observable=custom_obs,
+    )
+    weights = torch.rand(2, 2, 3)
+    x = torch.rand(5, 2)
+
+    torq_layer = QLayer(
+        n_qubits=2,
+        n_layers=2,
+        ansatz_name="basic_entangling",
+        config=config,
+        weights=weights.clone(),
+    )
+    penny_layer = PennyLaneQLayer(
+        n_qubits=2,
+        n_layers=2,
+        ansatz_name="basic_entangling",
+        config=config,
+        weights=weights.clone(),
+    )
+
+    y_torq = torq_layer(x)
+    y_penny = penny_layer(x)
+    assert y_penny.shape == y_torq.shape == (5, 2)
+    assert torch.allclose(y_penny, y_torq, atol=1e-5, rtol=1e-5)
+
+
+def test_pennylane_q_layer_matches_torq_for_measurement_observables():
+    pytest.importorskip("pennylane")
+    pytest.importorskip("torq")
+
+    import torch
+    from torq.QLayer import QLayer
+    from torq.simple import CircuitConfig
+    from torq_bench.pennylane_backend import PennyLaneQLayer
+
+    torch.manual_seed(0)
+    config = CircuitConfig(
+        measurement_observables=[
+            {"wires": 0, "pauli": "X"},
+            {"wires": [0, 1], "pauli": "ZZ", "coeff": 0.5},
+            {
+                "wires": [0, 1],
+                "matrix": torch.diag(torch.tensor([1.0, -1.0, 0.5, 2.0], dtype=torch.float32)),
+            },
+        ],
+        pauli_measurement_chunk_size=1,
+    )
+    weights = torch.rand(2, 2, 3)
+    x = torch.rand(4, 2)
+
+    torq_layer = QLayer(
+        n_qubits=2,
+        n_layers=2,
+        ansatz_name="basic_entangling",
+        config=config,
+        weights=weights.clone(),
+    )
+    penny_layer = PennyLaneQLayer(
+        n_qubits=2,
+        n_layers=2,
+        ansatz_name="basic_entangling",
+        config=config,
+        weights=weights.clone(),
+    )
+
+    y_torq = torq_layer(x)
+    y_penny = penny_layer(x)
+    assert y_penny.shape == y_torq.shape == (4, 3)
+    assert torch.allclose(y_penny, y_torq, atol=1e-5, rtol=1e-5)
+
+
 def test_pennylane_q_layer_rejects_unknown_ansatz():
     pytest.importorskip("pennylane")
     pytest.importorskip("torq")

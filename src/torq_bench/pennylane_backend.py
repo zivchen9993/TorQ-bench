@@ -85,6 +85,9 @@ class PennyLaneQLayer(QLayer):
             data_reupload_every=self.data_reupload_every,
             basis_angle_embedding=self.basis_angle_embedding,
             pennylane_dev_name=pennylane_dev_name,
+            observable=getattr(self, "observable", None),
+            measurement_observables=getattr(self, "measurement_observables", None),
+            pauli_measurement_chunk_size=getattr(self.config, "pauli_measurement_chunk_size", 8),
         )
         self._qc = _select_circuit(
             self._penny,
@@ -99,7 +102,8 @@ class PennyLaneQLayer(QLayer):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self._scale_angles(x)
-        return torch.stack(self._qc(x), dim=1).to(torch.float32)
+        state = self._qc(x)
+        return self._penny.measure_state(state).to(torch.float32)
 
     def _scale_angles(self, angles: torch.Tensor) -> torch.Tensor:
         _, scaled, _, _ = get_angle_embedding_sigmas(

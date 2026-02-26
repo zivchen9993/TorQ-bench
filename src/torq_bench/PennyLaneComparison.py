@@ -5,6 +5,7 @@ except ImportError as exc:
 import sys
 import torch
 import numpy as np
+import torq as tq
 
 _ANGLE_EMBEDDING_ROTATIONS = {
     "x": "X",
@@ -26,6 +27,11 @@ class PennyLaneComparison:
         data_reupload_every=0,
         pennylane_dev_name="default.qubit",
         basis_angle_embedding="X",
+        observable=None,
+        measurement_observables=None,
+        pauli_measurement_chunk_size=8,
+        local_observable_name="Z",
+        custom_local_observable=None,
     ):
         self.device = qml.device(pennylane_dev_name, wires=n_qubits)
         # self.device    = qml.device("lightning.qubit", wires=n_qubits)
@@ -42,6 +48,16 @@ class PennyLaneComparison:
                 "basis_angle_embedding must be one of X/RX, Y/RY, Z/RZ for PennyLaneComparison."
             )
         self._angle_embedding_rotation = _ANGLE_EMBEDDING_ROTATIONS[basis_key]
+        if pauli_measurement_chunk_size < 1:
+            raise ValueError("pauli_measurement_chunk_size must be >= 1.")
+        self.pauli_measurement_chunk_size = pauli_measurement_chunk_size
+        self.measurement_observables = measurement_observables
+        self.observable = observable
+        if self.measurement_observables is None and self.observable is None:
+            self.observable = self._resolve_local_observable(
+                local_observable_name=local_observable_name,
+                custom_local_observable=custom_local_observable,
+            )
         # Keep this helper side-effect free for library usage.
 
     def _params_no_data_reupload(self):
@@ -57,6 +73,37 @@ class PennyLaneComparison:
             rotation=self._angle_embedding_rotation,
         )
 
+    def _resolve_local_observable(self, local_observable_name, custom_local_observable):
+        obs_name_lower = str(local_observable_name).lower()
+        ref = self.params if self.params is not None else torch.empty(1)
+        match obs_name_lower:
+            case "z" | "pauliz" | "pauli_z" | "sigmaz" | "sigma_z":
+                return tq.sigma_Z_like(x=ref)
+            case "x" | "paulix" | "pauli_x" | "sigmax" | "sigma_x":
+                return tq.sigma_X_like(x=ref)
+            case "y" | "pauliy" | "pauli_y" | "sigmay" | "sigma_y":
+                return tq.sigma_Y_like(x=ref)
+            case "custom" | "custom_hermitian" | "local":
+                if custom_local_observable is None:
+                    raise ValueError(
+                        "custom_local_observable must be provided when local_observable_name is custom."
+                    )
+                return tq.local_obs_like(custom_local_observable, x=ref)
+            case _:
+                raise ValueError(
+                    f"Unsupported observable name: {local_observable_name!r}. "
+                    "Supported: 'Z', 'X', 'Y', local 2x2 observable."
+                )
+
+    def measure_state(self, state):
+        if self.measurement_observables is not None:
+            return tq.measure_observables(
+                state,
+                self.measurement_observables,
+                pauli_chunk_size=self.pauli_measurement_chunk_size,
+            )
+        return tq.measure(state, self.observable)
+
     # 1) basic‑entangling (SX‑based mixer + wrap‑around ladder)
     def circuit_basic_entangling(self):
         @qml.qnode(self.device)
@@ -68,7 +115,7 @@ class PennyLaneComparison:
             ranges = L * [1]
             qml.StronglyEntanglingLayers(params, range(n), ranges=ranges)
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 2) Strongly‑entangling
@@ -81,7 +128,7 @@ class PennyLaneComparison:
 
             qml.StronglyEntanglingLayers(params, range(n))
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 3) Cross‑mesh (single RX + CRZ)
@@ -102,7 +149,7 @@ class PennyLaneComparison:
                 for idx,(c,t) in enumerate(pairs):
                     qml.CRZ(w[n + idx], wires=[c, t])
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 4) Cross‑mesh with 2 rotations per qubit (RX then RZ)
@@ -125,7 +172,7 @@ class PennyLaneComparison:
                 for idx,(c,t) in enumerate(pairs):
                     qml.CRZ(w[2*n + idx], wires=[c, t])
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 5) Cross‑mesh controlled‑X with composite “Rot” gates first
@@ -146,7 +193,7 @@ class PennyLaneComparison:
                 for c,t in pairs:
                     qml.CNOT(wires=[c, t])
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 6) No-entanglement ansatz (per-qubit Rot gates only)
@@ -162,7 +209,7 @@ class PennyLaneComparison:
                 for q in range(n):
                     qml.Rot(w[q, 0], w[q, 1], w[q, 2], wires=q)
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
 
         return circuit
 
@@ -187,7 +234,7 @@ class PennyLaneComparison:
             # last layer
             qml.StronglyEntanglingLayers(self.params_last_layer_reupload.unsqueeze(0), wires=range(n), ranges=ranges)
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 2) Strongly‑entangling
@@ -204,7 +251,7 @@ class PennyLaneComparison:
             # last layer
             qml.StronglyEntanglingLayers(self.params_last_layer_reupload.unsqueeze(0), wires=range(n))
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 3) Cross‑mesh (single RX + CRZ)
@@ -235,7 +282,7 @@ class PennyLaneComparison:
                 for idx, (c, t) in enumerate(pairs):
                     qml.CRZ(w[n + idx], wires=[c, t])
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 4) Cross‑mesh with 2 rotations per qubit (RX then RZ)
@@ -272,7 +319,7 @@ class PennyLaneComparison:
                 for idx, (c, t) in enumerate(pairs):
                     qml.CRZ(w[2 * n + idx], wires=[c, t])
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 5) Cross‑mesh controlled‑X with composite “Rot” gates first
@@ -304,7 +351,7 @@ class PennyLaneComparison:
                 for c, t in pairs:
                     qml.CNOT(wires=[c, t])
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
         return circuit
 
     # 6) No-entanglement ansatz (per-qubit Rot gates only)
@@ -325,7 +372,7 @@ class PennyLaneComparison:
                 for q in range(n):
                     qml.Rot(w[q, 0], w[q, 1], w[q, 2], wires=q)
 
-            return [qml.expval(qml.PauliZ(wires=i)) for i in range(n)]
+            return qml.state()
 
         return circuit
 
