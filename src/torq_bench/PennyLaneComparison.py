@@ -27,11 +27,8 @@ class PennyLaneComparison:
         data_reupload_every=0,
         pennylane_dev_name="default.qubit",
         basis_angle_embedding="X",
-        observable=None,
-        measurement_observables=None,
+        observables=None,
         pauli_measurement_chunk_size=8,
-        local_observable_name="Z",
-        custom_local_observable=None,
     ):
         self.device = qml.device(pennylane_dev_name, wires=n_qubits)
         # self.device    = qml.device("lightning.qubit", wires=n_qubits)
@@ -51,13 +48,7 @@ class PennyLaneComparison:
         if pauli_measurement_chunk_size < 1:
             raise ValueError("pauli_measurement_chunk_size must be >= 1.")
         self.pauli_measurement_chunk_size = pauli_measurement_chunk_size
-        self.measurement_observables = measurement_observables
-        self.observable = observable
-        if self.measurement_observables is None and self.observable is None:
-            self.observable = self._resolve_local_observable(
-                local_observable_name=local_observable_name,
-                custom_local_observable=custom_local_observable,
-            )
+        self.observables = observables
         # Keep this helper side-effect free for library usage.
 
     def _params_no_data_reupload(self):
@@ -73,36 +64,12 @@ class PennyLaneComparison:
             rotation=self._angle_embedding_rotation,
         )
 
-    def _resolve_local_observable(self, local_observable_name, custom_local_observable):
-        obs_name_lower = str(local_observable_name).lower()
-        ref = self.params if self.params is not None else torch.empty(1)
-        match obs_name_lower:
-            case "z" | "pauliz" | "pauli_z" | "sigmaz" | "sigma_z":
-                return tq.sigma_Z_like(x=ref)
-            case "x" | "paulix" | "pauli_x" | "sigmax" | "sigma_x":
-                return tq.sigma_X_like(x=ref)
-            case "y" | "pauliy" | "pauli_y" | "sigmay" | "sigma_y":
-                return tq.sigma_Y_like(x=ref)
-            case "custom" | "custom_hermitian" | "local":
-                if custom_local_observable is None:
-                    raise ValueError(
-                        "custom_local_observable must be provided when local_observable_name is custom."
-                    )
-                return tq.local_obs_like(custom_local_observable, x=ref)
-            case _:
-                raise ValueError(
-                    f"Unsupported observable name: {local_observable_name!r}. "
-                    "Supported: 'Z', 'X', 'Y', local 2x2 observable."
-                )
-
     def measure_state(self, state):
-        if self.measurement_observables is not None:
-            return tq.measure_observables(
-                state,
-                self.measurement_observables,
-                pauli_chunk_size=self.pauli_measurement_chunk_size,
-            )
-        return tq.measure(state, self.observable)
+        return tq.measure(
+            state,
+            self.observables,
+            pauli_chunk_size=self.pauli_measurement_chunk_size,
+        )
 
     # 1) basic‑entangling (SX‑based mixer + wrap‑around ladder)
     def circuit_basic_entangling(self):

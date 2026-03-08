@@ -52,8 +52,10 @@ Notes:
   `basic_entangling`, `strongly_entangling`, `cross_mesh`, `cross_mesh_2_rots`,
   `cross_mesh_cx_rot`, and `no_entanglement_ansatz`.
 - `data_reupload_every` is supported.
-- Output observables support `local_observable_name` (including `X`, `Y`, `custom`)
-  and `measurement_observables` specs (including non-local terms).
+- Output observables follow TorQ's current `config.observables` API:
+  `None` for per-qubit `Z`, Pauli strings like `"X"` or `"XI_ZZ"`, or
+  Hermitian matrices with shape `[2,2]`, `[n_qubits,2,2]`, `[2**n,2**n]`,
+  or `[m,2**n,2**n]`.
 
 ## Using PennyLaneComparison directly
 

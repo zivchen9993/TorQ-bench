@@ -85,8 +85,7 @@ class PennyLaneQLayer(QLayer):
             data_reupload_every=self.data_reupload_every,
             basis_angle_embedding=self.basis_angle_embedding,
             pennylane_dev_name=pennylane_dev_name,
-            observable=getattr(self, "observable", None),
-            measurement_observables=getattr(self, "measurement_observables", None),
+            observables=getattr(self.config, "observables", None),
             pauli_measurement_chunk_size=getattr(self.config, "pauli_measurement_chunk_size", 8),
         )
         self._qc = _select_circuit(
