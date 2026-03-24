@@ -49,9 +49,14 @@ y_pl = pl_layer(x)
 
 Notes:
 - `PennyLaneQLayer` supports TorQ ansatz names:
-  `basic_entangling`, `strongly_entangling`, `cross_mesh`, `cross_mesh_2_rots`,
-  `cross_mesh_cx_rot`, and `no_entanglement_ansatz`.
+  `basic_entangling`, `single_rot_basic_ent`, `strongly_entangling`,
+  `cross_mesh`, `cross_mesh_2_rots`, `cross_mesh_cx_rot`, `tile`,
+  and `no_entanglement_ansatz`.
 - `data_reupload_every` is supported.
+- Config-driven ansatz options are forwarded to PennyLane:
+  `single_rot_basic_ent` uses `single_rotation_gate`, and `tile` uses
+  `tile_rotation_params`, `single_rotation_gate`, `tile_sublayers`, and
+  `tile_cyclic`.
 - Output observables follow TorQ's current `config.observables` API:
   `None` for per-qubit `Z`, Pauli strings like `"X"` or `"XI_ZZ"`, or
   Hermitian matrices with shape `[2,2]`, `[n_qubits,2,2]`, `[2**n,2**n]`,
@@ -65,18 +70,22 @@ from torq_bench import PennyLaneComparison
 
 n_qubits = 4
 n_layers = 2
-weights = torch.rand(n_layers, n_qubits, 3)
+weights = torch.rand(n_layers, 1, n_qubits, 3)  # current TorQ no-data layout
 x = torch.rand(n_qubits)
 
 qc = PennyLaneComparison(n_qubits=n_qubits, n_layers=n_layers, weights=weights)
 circuit = qc.circuit_strongly_entangling()
-y = circuit(x)
+state = circuit(x)
 ```
+
+`PennyLaneComparison` also accepts the older no-data shape `[n_layers, *per_layer_shape]`
+for backward compatibility.
 
 ## Run the built-in demo
 
-The comparison module includes a demo that builds and draws several circuits.
-It uses `qml.draw_mpl`, so you will need `matplotlib` installed.
+The comparison module includes a demo that builds and draws the supported TorQ
+ansatzes, including `single_rot_basic_ent` and `tile` variants. It uses
+`qml.draw_mpl`, so you will need `matplotlib` installed.
 
 ```bash
 python -m torq_bench.PennyLaneComparison

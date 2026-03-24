@@ -17,10 +17,12 @@ def _select_circuit(pennylane_backend, ansatz_name: str, data_reupload_every: in
     if data_reupload_every:
         candidates = {
             "basic_entangling": ("data_re_circuit_basic_entangling",),
+            "single_rot_basic_ent": ("data_re_circuit_single_rot_basic_ent",),
             "strongly_entangling": ("data_re_circuit_strongly_entangling",),
             "cross_mesh": ("data_re_circuit_cross_mesh",),
             "cross_mesh_2_rots": ("data_re_circuit_cross_mesh_2_rots",),
             "cross_mesh_cx_rot": ("data_re_circuit_cross_mesh_cx_rot",),
+            "tile": ("data_re_circuit_tile",),
             "no_entanglement_ansatz": (
                 "data_re_circuit_no_entanglement_ansatz",
                 "data_re_circuit_no_entanglement",
@@ -29,10 +31,12 @@ def _select_circuit(pennylane_backend, ansatz_name: str, data_reupload_every: in
     else:
         candidates = {
             "basic_entangling": ("circuit_basic_entangling",),
+            "single_rot_basic_ent": ("circuit_single_rot_basic_ent",),
             "strongly_entangling": ("circuit_strongly_entangling",),
             "cross_mesh": ("circuit_cross_mesh",),
             "cross_mesh_2_rots": ("circuit_cross_mesh_2_rots",),
             "cross_mesh_cx_rot": ("circuit_cross_mesh_cx_rot",),
+            "tile": ("circuit_tile",),
             "no_entanglement_ansatz": (
                 "circuit_no_entanglement_ansatz",
                 "circuit_no_entanglement",
@@ -87,6 +91,7 @@ class PennyLaneQLayer(QLayer):
             pennylane_dev_name=pennylane_dev_name,
             observables=getattr(self.config, "observables", None),
             pauli_measurement_chunk_size=getattr(self.config, "pauli_measurement_chunk_size", 8),
+            config=self.config,
         )
         self._qc = _select_circuit(
             self._penny,

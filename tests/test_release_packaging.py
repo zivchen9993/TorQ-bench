@@ -91,10 +91,12 @@ def test_pennylane_q_layer_supports_torq_ansatzes_without_data_reupload():
 
     ansatz_names = (
         "basic_entangling",
+        "single_rot_basic_ent",
         "strongly_entangling",
         "cross_mesh",
         "cross_mesh_2_rots",
         "cross_mesh_cx_rot",
+        "tile",
         "no_entanglement_ansatz",
     )
     x = torch.rand(3, 2)
@@ -110,7 +112,15 @@ def test_pennylane_q_layer_supports_torq_ansatzes_without_data_reupload():
         assert torch.isfinite(out).all()
 
 
-def test_pennylane_q_layer_supports_data_reupload():
+@pytest.mark.parametrize(
+    ("ansatz_name", "config_kwargs"),
+    (
+        ("no_entanglement_ansatz", {}),
+        ("single_rot_basic_ent", {"single_rotation_gate": "rz"}),
+        ("tile", {"tile_rotation_params": 1, "single_rotation_gate": "ry", "tile_sublayers": 2, "tile_cyclic": True}),
+    ),
+)
+def test_pennylane_q_layer_supports_data_reupload(ansatz_name, config_kwargs):
     pytest.importorskip("pennylane")
     pytest.importorskip("torq")
 
@@ -118,16 +128,62 @@ def test_pennylane_q_layer_supports_data_reupload():
     from torq.simple import CircuitConfig
     from torq_bench.pennylane_backend import PennyLaneQLayer
 
+    n_qubits = 3
     layer = PennyLaneQLayer(
-        n_qubits=2,
+        n_qubits=n_qubits,
         n_layers=2,
-        ansatz_name="no_entanglement_ansatz",
-        config=CircuitConfig(data_reupload_every=2),
+        ansatz_name=ansatz_name,
+        config=CircuitConfig(data_reupload_every=2, **config_kwargs),
         basis_angle_embedding="Z",
     )
-    out = layer(torch.rand(4, 2))
-    assert out.shape == (4, 2)
+    out = layer(torch.rand(4, n_qubits))
+    assert out.shape == (4, n_qubits)
     assert torch.isfinite(out).all()
+
+
+@pytest.mark.parametrize(
+    ("ansatz_name", "config_kwargs", "n_qubits"),
+    (
+        ("single_rot_basic_ent", {"single_rotation_gate": "ry"}, 3),
+        ("tile", {"tile_rotation_params": 3, "tile_sublayers": 2, "tile_cyclic": True}, 4),
+        ("tile", {"tile_rotation_params": 1, "single_rotation_gate": "rz", "tile_sublayers": 2, "tile_cyclic": True}, 4),
+    ),
+)
+def test_pennylane_q_layer_matches_torq_for_added_ansatzes(ansatz_name, config_kwargs, n_qubits):
+    pytest.importorskip("pennylane")
+    pytest.importorskip("torq")
+
+    import torch
+    from torq.QLayer import QLayer
+    from torq.simple import CircuitConfig
+    from torq_bench.pennylane_backend import PennyLaneQLayer
+
+    torch.manual_seed(0)
+    config = CircuitConfig(**config_kwargs)
+    torq_layer = QLayer(
+        n_qubits=n_qubits,
+        n_layers=2,
+        ansatz_name=ansatz_name,
+        config=config,
+    )
+    penny_layer = PennyLaneQLayer(
+        n_qubits=n_qubits,
+        n_layers=2,
+        ansatz_name=ansatz_name,
+        config=config,
+        weights=torq_layer.params.detach().clone(),
+        weights_last_layer_data_re=(
+            getattr(torq_layer, "params_last_layer_reupload", None).detach().clone()
+            if getattr(torq_layer, "params_last_layer_reupload", None) is not None
+            else None
+        ),
+    )
+
+    x = torch.rand(5, n_qubits)
+    y_torq = torq_layer(x)
+    y_penny = penny_layer(x)
+    assert y_penny.shape == y_torq.shape == (5, n_qubits)
+    assert torch.allclose(y_penny, y_torq, atol=1e-5, rtol=1e-5)
 
 
 def test_pennylane_q_layer_matches_torq_for_shared_local_matrix_observable():
