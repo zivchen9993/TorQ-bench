@@ -56,7 +56,8 @@ Notes:
 - Config-driven ansatz options are forwarded to PennyLane:
   `single_rot_basic_ent` uses `single_rotation_gate`, and `tile` uses
   `tile_rotation_params`, `single_rotation_gate`, `tile_sublayers`, and
-  `tile_cyclic`.
+  `tile_cyclic`. The `tile_cyclic` wrap-around CNOT is applied only when
+  `n_qubits > 2` and even, matching TorQ.
 - Output observables follow TorQ's current `config.observables` API:
   `None` for per-qubit `Z`, Pauli strings like `"X"` or `"XI_ZZ"`, or
   Hermitian matrices with shape `[2,2]`, `[n_qubits,2,2]`, `[2**n,2**n]`,

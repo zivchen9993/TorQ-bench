@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import copy
+import inspect
+from types import SimpleNamespace
+
 import torch
 
 from torq.QLayer import QLayer
@@ -65,7 +69,7 @@ class PennyLaneQLayer(QLayer):
         basis_angle_embedding: str = "X",
         pennylane_dev_name: str | None = None,
     ) -> None:
-        super().__init__(
+        super_kwargs = dict(
             n_qubits=n_qubits,
             n_layers=n_layers,
             ansatz_name=ansatz_name,
@@ -74,8 +78,15 @@ class PennyLaneQLayer(QLayer):
             weights_last_layer_data_re=weights_last_layer_data_re,
             q_layer_idx=q_layer_idx,
             param_init_dict=param_init_dict,
-            basis_angle_embedding=basis_angle_embedding,
         )
+        if "basis_angle_embedding" in inspect.signature(QLayer.__init__).parameters:
+            super_kwargs["basis_angle_embedding"] = basis_angle_embedding
+        else:
+            config_for_super = copy.copy(config) if config is not None else SimpleNamespace()
+            setattr(config_for_super, "basis_angle_embedding", basis_angle_embedding)
+            super_kwargs["config"] = config_for_super
+
+        super().__init__(**super_kwargs)
 
         if pennylane_dev_name is None:
             pennylane_dev_name = getattr(self.config, "pennylane_dev_name", "default.qubit")

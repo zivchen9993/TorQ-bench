@@ -147,6 +147,7 @@ def test_pennylane_q_layer_supports_data_reupload(ansatz_name, config_kwargs):
         ("single_rot_basic_ent", {"single_rotation_gate": "ry"}, 3),
         ("tile", {"tile_rotation_params": 3, "tile_sublayers": 2, "tile_cyclic": True}, 4),
         ("tile", {"tile_rotation_params": 1, "single_rotation_gate": "rz", "tile_sublayers": 2, "tile_cyclic": True}, 4),
+        ("tile", {"tile_rotation_params": 3, "tile_sublayers": 2, "tile_cyclic": True}, 5),
     ),
 )
 def test_pennylane_q_layer_matches_torq_for_added_ansatzes(ansatz_name, config_kwargs, n_qubits):

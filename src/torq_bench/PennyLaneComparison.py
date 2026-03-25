@@ -168,7 +168,7 @@ class PennyLaneComparison:
             pairs.append((control, control + 1))
         for control in range(1, self.n_qubits - 1, 2):
             pairs.append((control, control + 1))
-        if self.tile_cyclic and self.n_qubits > 2:
+        if self.tile_cyclic and self.n_qubits > 2 and (self.n_qubits % 2 == 0):
             pairs.append((self.n_qubits - 1, 0))
         return tuple(pairs)
 
@@ -457,36 +457,37 @@ if __name__ == "__main__":
     data_reupload_every = 2
 
     demo_cases = (
-        ("basic_entangling", None, "basic_entangling"),
-        ("single_rot_basic_ent", SimpleNamespace(single_rotation_gate="ry"), "single_rot_basic_ent (RY)"),
-        ("strongly_entangling", None, "strongly_entangling"),
-        ("cross_mesh", None, "cross_mesh"),
-        ("cross_mesh_2_rots", None, "cross_mesh_2_rots"),
-        ("cross_mesh_cx_rot", None, "cross_mesh_cx_rot"),
-        ("tile", None, "tile"),
+        ("basic_entangling", None, "basic_entangling", n_qubits),
+        ("single_rot_basic_ent", SimpleNamespace(single_rotation_gate="ry"), "single_rot_basic_ent (RY)", n_qubits),
+        ("strongly_entangling", None, "strongly_entangling", n_qubits),
+        ("cross_mesh", None, "cross_mesh", n_qubits),
+        ("cross_mesh_2_rots", None, "cross_mesh_2_rots", n_qubits),
+        ("cross_mesh_cx_rot", None, "cross_mesh_cx_rot", n_qubits),
+        ("tile", None, "tile", n_qubits),
         (
             "tile",
             SimpleNamespace(tile_rotation_params=1, single_rotation_gate="rz", tile_sublayers=2, tile_cyclic=True),
             "tile (1-param RZ, 2 sublayers, cyclic)",
+            4,
         ),
-        ("no_entanglement_ansatz", None, "no_entanglement_ansatz"),
+        ("no_entanglement_ansatz", None, "no_entanglement_ansatz", n_qubits),
     )
 
-    for ansatz_name, config, title in demo_cases:
+    for ansatz_name, config, title, case_n_qubits in demo_cases:
         run_and_draw_circ(
             ansatz_name,
             f"{title} - data re-upload",
-            n_qubits=n_qubits,
+            n_qubits=case_n_qubits,
             n_layers=n_layers,
             data_reupload_every=data_reupload_every,
             config=config,
         )
 
-    for ansatz_name, config, title in demo_cases:
+    for ansatz_name, config, title, case_n_qubits in demo_cases:
         run_and_draw_circ(
             ansatz_name,
             f"{title} - no data re-upload",
-            n_qubits=n_qubits,
+            n_qubits=case_n_qubits,
             n_layers=n_layers,
             config=config,
         )
