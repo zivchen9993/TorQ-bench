@@ -9,7 +9,6 @@ import sys
 from types import SimpleNamespace
 
 import torch
-import torq as tq
 
 _ANGLE_EMBEDDING_ROTATIONS = {
     "x": "X",
@@ -49,6 +48,13 @@ _DATA_RE_CIRCUIT_METHODS = {
     "cross_mesh_cx_rot": "data_re_circuit_cross_mesh_cx_rot",
     "tile": "data_re_circuit_tile",
     "no_entanglement_ansatz": "data_re_circuit_no_entanglement_ansatz",
+}
+
+_PAULI_OPERATOR_FACTORIES = {
+    "I": qml.Identity,
+    "X": qml.PauliX,
+    "Y": qml.PauliY,
+    "Z": qml.PauliZ,
 }
 
 
@@ -110,6 +116,8 @@ class PennyLaneComparison:
             raise ValueError("pauli_measurement_chunk_size must be >= 1.")
         self.pauli_measurement_chunk_size = pauli_measurement_chunk_size
         self.observables = observables
+        self._measurement_operators = self._build_measurement_operators()
+        self._state_measurement_qnode = self._build_state_measurement_qnode()
 
     def _angle_embed(self, x):
         qml.AngleEmbedding(
@@ -239,13 +247,27 @@ class PennyLaneComparison:
         del layer_idx
         self._apply_rot_wall(weights)
 
+    def _apply_no_data_reupload_body(self, x, apply_layer, index_provider=None):
+        self._angle_embed(x)
+        for layer in range(self.n_layers):
+            idx = layer if index_provider is None else index_provider(layer)
+            apply_layer(idx, self._main_layer_weights(layer))
+
+    def _apply_data_reupload_body(self, x, apply_layer, index_provider=None):
+        for layer in range(self.n_layers):
+            for rep in range(self.data_reupload_every):
+                idx = rep if index_provider is None else index_provider(layer, rep)
+                apply_layer(idx, self._data_re_layer_weights(layer, rep))
+            self._angle_embed(x)
+
+        for rep in range(self.data_reupload_every):
+            idx = rep if index_provider is None else index_provider(self.n_layers, rep)
+            apply_layer(idx, self._last_data_re_weights(rep))
+
     def _build_no_data_reupload_circuit(self, apply_layer, index_provider=None):
         @qml.qnode(self.device)
         def circuit(x):
-            self._angle_embed(x)
-            for layer in range(self.n_layers):
-                idx = layer if index_provider is None else index_provider(layer)
-                apply_layer(idx, self._main_layer_weights(layer))
+            self._apply_no_data_reupload_body(x, apply_layer, index_provider=index_provider)
             return qml.state()
 
         return circuit
@@ -253,26 +275,250 @@ class PennyLaneComparison:
     def _build_data_reupload_circuit(self, apply_layer, index_provider=None):
         @qml.qnode(self.device)
         def circuit(x):
-            for layer in range(self.n_layers):
-                for rep in range(self.data_reupload_every):
-                    idx = rep if index_provider is None else index_provider(layer, rep)
-                    apply_layer(idx, self._data_re_layer_weights(layer, rep))
-                self._angle_embed(x)
-
-            for rep in range(self.data_reupload_every):
-                idx = rep if index_provider is None else index_provider(self.n_layers, rep)
-                apply_layer(idx, self._last_data_re_weights(rep))
-
+            self._apply_data_reupload_body(x, apply_layer, index_provider=index_provider)
             return qml.state()
 
         return circuit
 
-    def measure_state(self, state):
-        return tq.measure(
-            state,
-            self.observables,
-            pauli_chunk_size=self.pauli_measurement_chunk_size,
+    def _build_pauli_word_operator(self, word: str):
+        factors = []
+        for wire, symbol in enumerate(word):
+            try:
+                factory = _PAULI_OPERATOR_FACTORIES[symbol]
+            except KeyError as exc:
+                raise ValueError(
+                    "Pauli-string observables must contain only I/X/Y/Z symbols. "
+                    f"Got: {word!r}"
+                ) from exc
+            if symbol != "I":
+                factors.append(factory(wires=wire))
+
+        if not factors:
+            return qml.Identity(wires=0)
+        if len(factors) == 1:
+            return factors[0]
+        return qml.prod(*factors)
+
+    def _build_string_observables(self, observables: str):
+        tokens = [token.strip().upper() for token in observables.split("_") if token.strip()]
+        if not tokens:
+            raise ValueError("observables must contain at least one Pauli token.")
+
+        operators = []
+        for token in tokens:
+            if len(token) == 1:
+                try:
+                    factory = _PAULI_OPERATOR_FACTORIES[token]
+                except KeyError as exc:
+                    raise ValueError(
+                        "Single-qubit observable names must be one of I/X/Y/Z. "
+                        f"Got: {token!r}"
+                    ) from exc
+                operators.extend(factory(wires=wire) for wire in range(self.n_qubits))
+                continue
+
+            if len(token) != self.n_qubits:
+                raise ValueError(
+                    "Pauli-string observables must be length 1 or n_qubits. "
+                    f"Got {token!r} for n_qubits={self.n_qubits}."
+                )
+            operators.append(self._build_pauli_word_operator(token))
+
+        return operators
+
+    def _build_matrix_observables(self, observables):
+        obs = torch.as_tensor(observables)
+        full_shape = (2**self.n_qubits, 2**self.n_qubits)
+
+        if obs.ndim == 2:
+            if tuple(obs.shape) == (2, 2):
+                return [qml.Hermitian(obs, wires=wire) for wire in range(self.n_qubits)]
+            if tuple(obs.shape) == full_shape:
+                return [qml.Hermitian(obs, wires=range(self.n_qubits))]
+        elif obs.ndim == 3:
+            if tuple(obs.shape) == (self.n_qubits, 2, 2):
+                return [qml.Hermitian(obs[wire], wires=wire) for wire in range(self.n_qubits)]
+            if tuple(obs.shape[1:]) == full_shape:
+                return [
+                    qml.Hermitian(obs[idx], wires=range(self.n_qubits))
+                    for idx in range(obs.shape[0])
+                ]
+
+        raise ValueError(
+            "Unsupported observables shape for PennyLaneComparison. "
+            "Expected None, a Pauli string, [2,2], [n_qubits,2,2], [2**n,2**n], "
+            "or [m,2**n,2**n]."
         )
+
+    def _build_measurement_operators(self):
+        if self.observables is None:
+            return [qml.PauliZ(wires=wire) for wire in range(self.n_qubits)]
+        if isinstance(self.observables, str):
+            return self._build_string_observables(self.observables)
+        return self._build_matrix_observables(self.observables)
+
+    def _measurement_return(self, operators):
+        measurements = [qml.expval(operator) for operator in operators]
+        if len(measurements) == 1:
+            return measurements[0]
+        return measurements
+
+    def _format_batched_measurement_result(self, result):
+        if isinstance(result, torch.Tensor):
+            result = torch.real(result)
+            if result.ndim == 0:
+                return result.reshape(1, 1)
+            if result.ndim == 1:
+                return result.unsqueeze(-1)
+            return result
+
+        stacked = torch.stack([torch.as_tensor(value) for value in result], dim=-1)
+        return torch.real(stacked)
+
+    def _build_state_measurement_qnode(self):
+        operators = self._measurement_operators
+
+        @qml.qnode(self.device, interface="torch")
+        def circuit(state_vector):
+            qml.StatePrep(state_vector, wires=range(self.n_qubits))
+            return self._measurement_return(operators)
+
+        return circuit
+
+    def _run_state_measurement_qnode(self, state_vector):
+        result = self._state_measurement_qnode(state_vector)
+        if isinstance(result, torch.Tensor):
+            return torch.real(result).reshape(-1)
+        stacked = torch.stack([torch.as_tensor(value) for value in result], dim=0)
+        return torch.real(stacked)
+
+    def _build_no_data_reupload_measurement_circuit(self, apply_layer, index_provider=None):
+        operators = self._measurement_operators
+
+        @qml.qnode(self.device, interface="torch")
+        def circuit(x):
+            self._apply_no_data_reupload_body(x, apply_layer, index_provider=index_provider)
+            return self._measurement_return(operators)
+
+        return circuit
+
+    def _build_data_reupload_measurement_circuit(self, apply_layer, index_provider=None):
+        operators = self._measurement_operators
+
+        @qml.qnode(self.device, interface="torch")
+        def circuit(x):
+            self._apply_data_reupload_body(x, apply_layer, index_provider=index_provider)
+            return self._measurement_return(operators)
+
+        return circuit
+
+    def build_measurement_circuit(self, ansatz_name: str):
+        if self.data_reupload_every:
+            mapping = {
+                "basic_entangling": (
+                    self._apply_basic_entangling_layer,
+                    None,
+                    self._build_data_reupload_measurement_circuit,
+                ),
+                "single_rot_basic_ent": (
+                    self._apply_single_rot_basic_ent_layer,
+                    None,
+                    self._build_data_reupload_measurement_circuit,
+                ),
+                "strongly_entangling": (
+                    self._apply_strongly_entangling_layer,
+                    lambda _layer, rep: rep,
+                    self._build_data_reupload_measurement_circuit,
+                ),
+                "cross_mesh": (
+                    self._apply_cross_mesh_layer,
+                    None,
+                    self._build_data_reupload_measurement_circuit,
+                ),
+                "cross_mesh_2_rots": (
+                    self._apply_cross_mesh_2_rots_layer,
+                    None,
+                    self._build_data_reupload_measurement_circuit,
+                ),
+                "cross_mesh_cx_rot": (
+                    self._apply_cross_mesh_cx_rot_layer,
+                    None,
+                    self._build_data_reupload_measurement_circuit,
+                ),
+                "tile": (
+                    self._apply_tile_layer,
+                    None,
+                    self._build_data_reupload_measurement_circuit,
+                ),
+                "no_entanglement_ansatz": (
+                    self._apply_no_entanglement_layer,
+                    None,
+                    self._build_data_reupload_measurement_circuit,
+                ),
+            }
+        else:
+            mapping = {
+                "basic_entangling": (
+                    self._apply_basic_entangling_layer,
+                    None,
+                    self._build_no_data_reupload_measurement_circuit,
+                ),
+                "single_rot_basic_ent": (
+                    self._apply_single_rot_basic_ent_layer,
+                    None,
+                    self._build_no_data_reupload_measurement_circuit,
+                ),
+                "strongly_entangling": (
+                    self._apply_strongly_entangling_layer,
+                    lambda layer: layer,
+                    self._build_no_data_reupload_measurement_circuit,
+                ),
+                "cross_mesh": (
+                    self._apply_cross_mesh_layer,
+                    None,
+                    self._build_no_data_reupload_measurement_circuit,
+                ),
+                "cross_mesh_2_rots": (
+                    self._apply_cross_mesh_2_rots_layer,
+                    None,
+                    self._build_no_data_reupload_measurement_circuit,
+                ),
+                "cross_mesh_cx_rot": (
+                    self._apply_cross_mesh_cx_rot_layer,
+                    None,
+                    self._build_no_data_reupload_measurement_circuit,
+                ),
+                "tile": (
+                    self._apply_tile_layer,
+                    None,
+                    self._build_no_data_reupload_measurement_circuit,
+                ),
+                "no_entanglement_ansatz": (
+                    self._apply_no_entanglement_layer,
+                    None,
+                    self._build_no_data_reupload_measurement_circuit,
+                ),
+            }
+
+        try:
+            apply_layer, index_provider, builder = mapping[ansatz_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"PennyLaneComparison does not support ansatz_name={ansatz_name!r} "
+                f"with data_reupload_every={self.data_reupload_every}."
+            ) from exc
+        return builder(apply_layer, index_provider=index_provider)
+
+    def measure_state(self, state):
+        if state.dim() == 1:
+            state = state.unsqueeze(0)
+        elif state.dim() == 3 and state.shape[-1] == 1:
+            state = state.squeeze(-1)
+        elif state.dim() != 2:
+            raise ValueError("state must have shape [B, 2**n], [2**n], or [B, 2**n, 1].")
+
+        outputs = [self._run_state_measurement_qnode(state_vector) for state_vector in state]
+        return torch.stack(outputs, dim=0)
 
     def circuit_basic_entangling(self):
         return self._build_no_data_reupload_circuit(self._apply_basic_entangling_layer)

@@ -303,6 +303,113 @@ def test_pennylane_q_layer_matches_torq_for_multiple_full_system_observables():
     assert torch.allclose(y_penny, y_torq, atol=1e-5, rtol=1e-5)
 
 
+def _assert_direct_measurement_matches_legacy(
+    *,
+    ansatz_name,
+    n_qubits,
+    n_layers,
+    config,
+    x,
+):
+    import torch
+    import torq as tq
+    from torq.QLayer import QLayer
+    from torq_bench.PennyLaneComparison import PennyLaneComparison, _select_demo_circuit
+
+    torq_layer = QLayer(
+        n_qubits=n_qubits,
+        n_layers=n_layers,
+        ansatz_name=ansatz_name,
+        config=config,
+    )
+    comparison = PennyLaneComparison(
+        n_qubits=n_qubits,
+        n_layers=n_layers,
+        weights=torq_layer.params.detach().clone(),
+        weights_last_layer_data_re=(
+            getattr(torq_layer, "params_last_layer_reupload", None).detach().clone()
+            if getattr(torq_layer, "params_last_layer_reupload", None) is not None
+            else None
+        ),
+        data_reupload_every=getattr(config, "data_reupload_every", 0),
+        observables=getattr(config, "observables", None),
+        pauli_measurement_chunk_size=getattr(config, "pauli_measurement_chunk_size", 8),
+        config=config,
+    )
+
+    legacy_state_circuit = _select_demo_circuit(
+        comparison,
+        ansatz_name,
+        getattr(config, "data_reupload_every", 0),
+    )
+    legacy = tq.measure(
+        legacy_state_circuit(x),
+        getattr(config, "observables", None),
+        pauli_chunk_size=getattr(config, "pauli_measurement_chunk_size", 8),
+    )
+    direct = comparison._format_batched_measurement_result(
+        comparison.build_measurement_circuit(ansatz_name)(x)
+    )
+
+    assert direct.shape == legacy.shape
+    assert torch.allclose(direct, legacy, atol=1e-5, rtol=1e-5)
+
+
+def test_direct_measurement_circuit_matches_legacy_for_observable_variants():
+    pytest.importorskip("pennylane")
+    pytest.importorskip("torq")
+
+    import torch
+    from torq.simple import CircuitConfig
+
+    torch.manual_seed(0)
+
+    x_gate = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.float32)
+    z_gate = torch.tensor([[1.0, 0.0], [0.0, -1.0]], dtype=torch.float32)
+    cases = (
+        CircuitConfig(),
+        CircuitConfig(observables=torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=torch.float32)),
+        CircuitConfig(observables="XI_ZZ", pauli_measurement_chunk_size=1),
+        CircuitConfig(
+            observables=torch.stack(
+                (
+                    torch.kron(x_gate, torch.eye(2, dtype=torch.float32)),
+                    0.5 * torch.kron(z_gate, z_gate),
+                    torch.diag(torch.tensor([1.0, -1.0, 0.5, 2.0], dtype=torch.float32)),
+                ),
+                dim=0,
+            ),
+            pauli_measurement_chunk_size=1,
+        ),
+    )
+
+    for config in cases:
+        _assert_direct_measurement_matches_legacy(
+            ansatz_name="basic_entangling",
+            n_qubits=2,
+            n_layers=2,
+            config=config,
+            x=torch.rand(5, 2),
+        )
+
+
+def test_direct_measurement_circuit_matches_legacy_for_data_reupload():
+    pytest.importorskip("pennylane")
+    pytest.importorskip("torq")
+
+    import torch
+    from torq.simple import CircuitConfig
+
+    torch.manual_seed(0)
+    _assert_direct_measurement_matches_legacy(
+        ansatz_name="single_rot_basic_ent",
+        n_qubits=3,
+        n_layers=2,
+        config=CircuitConfig(data_reupload_every=2, single_rotation_gate="ry"),
+        x=torch.rand(4, 3),
+    )
+
+
 def test_pennylane_q_layer_rejects_unknown_ansatz():
     pytest.importorskip("pennylane")
     pytest.importorskip("torq")
