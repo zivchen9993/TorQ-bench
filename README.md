@@ -14,7 +14,7 @@ From source (recommended while developing):
 pip install -e .[pennylane]
 ```
 
-Or with PyPI:
+Or with PyPI: not fully updated yet
 
 ```bash
 pip install torq-bench[pennylane]
