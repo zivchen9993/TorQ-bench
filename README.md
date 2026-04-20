@@ -6,6 +6,22 @@ TorQ-bench is a small companion package that lets you run the same layer logic i
 TorQ and PennyLane to compare outputs and timing. It intentionally keeps PennyLane
 out of the core TorQ package.
 
+Developed while writing the paper:
+Quantum Physics-Informed Neural Networks for Maxwell’s Equations: Circuit Design, “Black Hole” Barren Plateaus Mitigation, and GPU Acceleration
+
+by Ziv Chen, Gal G. Shaviner, Hemanth Chandravamsi, Shimon Pisnoy, Steven H. Frankel, Uzi Pereg
+
+https://arxiv.org/abs/2506.23246
+
+For the simpler version associated with the following paper, please use the simple_for_PINNACLE branch:
+PINNACLE: An Open-Source Computational Framework for Classical and Quantum PINNs
+
+by Shimon Pisnoy, Hemanth Chandravamsi, Ziv Chen, Aaron Goldgewert, Gal Shaviner, Boris Shragner, Steven H. Frankel
+
+https://arxiv.org/abs/2604.15645
+
+It will be compatible with TorQ and QPINNACLE repos with the same branch name.
+
 ## Install
 
 From source (recommended while developing):
