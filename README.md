@@ -20,7 +20,7 @@ by Shimon Pisnoy, Hemanth Chandravamsi, Ziv Chen, Aaron Goldgewert, Gal Shaviner
 
 https://arxiv.org/abs/2604.15645
 
-It will be compatible with TorQ and QPINNACLE repos with the same branch name.
+It is compatible with TorQ simple_for_PINNACLE branch and PINNACLE repos. Also, this branch is the same as torq-bench v0.1.2 on PyPI.
 
 ## Install
 
