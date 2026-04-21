@@ -30,13 +30,13 @@ From source (recommended while developing):
 pip install -e .[pennylane]
 ```
 
-Or with PyPI: not fully updated yet
+Or from PyPI:
 
 ```bash
 pip install torq-bench[pennylane]
 ```
 
-TorQ-bench depends on `torq-quantum>=0.1.2`. PennyLane is optional and only required for
+TorQ-bench depends on `torq-quantum>=0.1.3`. PennyLane is optional and only required for
 the comparison wrappers.
 
 Note: the PyPI distribution is `torq-quantum`, while the Python import package remains `torq`.

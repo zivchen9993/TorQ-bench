@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TorQ-bench"
-version = "0.1.2"
+version = "0.1.3"
 description = "Tensor Operations for Research in Quantum systems - Benchmarking."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "torq-quantum>=0.1.2",
+  "torq-quantum>=0.1.3",
 ]
 license = { text = "MIT" }
 
